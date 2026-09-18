@@ -12,6 +12,13 @@ AIDictionarySuite* sAIDictionary = nullptr;
 AIUndoSuite* sAIUndo = nullptr;
 AIGroupSuite* sAIGroup = nullptr;
 AIUIThemeSuite* sVectorHalftoneUITheme = nullptr;
+AIPathfinderSuite* sVectorHalftonePathfinder = nullptr;
+AIArtSetSuite* sVectorHalftoneArtSet = nullptr;
+AIRasterizeSuite* sVectorHalftoneRasterize = nullptr;
+AIRasterSuite* sVectorHalftoneRaster = nullptr;
+AIBlendStyleSuite* sVectorHalftoneBlendStyle = nullptr;
+AIMaskSuite* sVectorHalftoneMask = nullptr;
+AIDocumentSuite* sVectorHalftoneDocument = nullptr;
 }
 
 ImportSuite gImportSuites[] = {
@@ -25,5 +32,12 @@ ImportSuite gImportSuites[] = {
     kAIUndoSuite, kAIUndoSuiteVersion, &sAIUndo,
     kAIGroupSuite, kAIGroupSuiteVersion, &sAIGroup,
     kAIUIThemeSuite, kAIUIThemeVersion, &sVectorHalftoneUITheme,
+    kAIPathfinderSuite, kAIPathfinderVersion, &sVectorHalftonePathfinder,
+    kAIArtSetSuite, kAIArtSetSuiteVersion, &sVectorHalftoneArtSet,
+    kAIRasterizeSuite, kAIRasterizeSuiteVersion, &sVectorHalftoneRasterize,
+    kAIRasterSuite, kAIRasterSuiteVersion, &sVectorHalftoneRaster,
+    kAIBlendStyleSuite, kAIBlendStyleSuiteVersion, &sVectorHalftoneBlendStyle,
+    kAIMaskSuite, kAIMaskSuiteVersion, &sVectorHalftoneMask,
+    kAIDocumentSuite, kAIDocumentSuiteVersion, &sVectorHalftoneDocument,
     nullptr, 0, nullptr
 };

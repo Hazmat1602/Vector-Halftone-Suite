@@ -29,8 +29,8 @@ struct VectorHalftoneParams {
     int colorMode = 1;                // legacy field; v0.3+ always follows source fill colour
     int clipToSource = 0;             // exact compound-path clipping for inward mode
     int preserveSourceAppearance = 0; // keep the effect input art below the marks
-    int solidCenter = 0;              // inward mode: overlap core marks so the centre becomes solid
-    int followCurve = 0;              // rotate marks perpendicular to nearest source edge
+    int solidCenter = 0;              // inward mode: generate a continuous clipped core after glow width
+    int followCurve = 0;              // follow edge contours through the glow band; deep interior stays stable
     int preset = 0;                   // 0 custom, 1 fine, 2 medium, 3 coarse, 4 screenprint
 };
 

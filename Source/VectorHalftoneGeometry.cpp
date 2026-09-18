@@ -212,17 +212,18 @@ bool TryReadPathStyle(AIArtHandle art, AIPathStyle& style) {
     return false;
 }
 
-AIPathStyle MakeMarkStyle(const AIPathStyle& sourceStyle, AIReal markSize, AIReal spacing, bool suppressStroke) {
+AIPathStyle MakeMarkStyle(const AIPathStyle& sourceStyle, AIReal markSize, AIReal spacing, bool suppressStroke, AIReal explicitStrokeWidth) {
     AIPathStyle mark;
     mark.Init();
 
     const bool hasFill = sourceStyle.fillPaint && sourceStyle.fill.color.kind != kNoneColor;
     const bool sourceHasStroke = sourceStyle.strokePaint && sourceStyle.stroke.color.kind != kNoneColor;
 
-    // Repeating the source stroke on every dot creates ugly overlaps as marks
-    // touch or merge. Marks therefore inherit the source fill directly, and
-    // stroke-only artwork uses the source stroke colour as the mark fill.
-    const bool paintStroke = false;
+    // Normal halftone marks suppress repeated source strokes because those
+    // outlines pile up as dots touch. Simple Colour Halftone can explicitly
+    // request a connecting stroke; in that case use the mark fill colour for
+    // the outline and the caller's exact width.
+    const bool paintStroke = !suppressStroke && explicitStrokeWidth > static_cast<AIReal>(0.001);
 
     // Dots/marks need a fill to read as halftone marks. If the source only has
     // a stroke, use the stroke colour as the mark fill. This keeps stroke-only
@@ -239,17 +240,9 @@ AIPathStyle MakeMarkStyle(const AIPathStyle& sourceStyle, AIReal markSize, AIRea
 
     if (paintStroke) {
         mark.strokePaint = true;
-        mark.stroke = sourceStyle.stroke;
-        // Keep the source stroke colour/overprint, but turn it into a controlled
-        // mark outline. Source artwork can have thick strokes that look correct
-        // on one large path but badly overlap when repeated on halftone dots.
-        const AIReal safeSpacing = spacing > static_cast<AIReal>(0.0) ? spacing : markSize;
-        const AIReal maxBySize = markSize * static_cast<AIReal>(0.075);
-        const AIReal maxBySpacing = safeSpacing * static_cast<AIReal>(0.035);
-        const AIReal maxUsefulStroke = (std::max)(static_cast<AIReal>(0.08),
-            (std::min)(maxBySize, maxBySpacing));
-        if (mark.stroke.width <= static_cast<AIReal>(0.0) || mark.stroke.width > maxUsefulStroke)
-            mark.stroke.width = maxUsefulStroke;
+        mark.stroke.width = explicitStrokeWidth;
+        mark.stroke.color = mark.fill.color;
+        mark.stroke.overprint = mark.fill.overprint;
     } else {
         mark.strokePaint = false;
     }
@@ -259,14 +252,15 @@ AIPathStyle MakeMarkStyle(const AIPathStyle& sourceStyle, AIReal markSize, AIRea
     return mark;
 }
 
-AIErr SetMarkStyle(AIArtHandle art, const AIPathStyle& sourceStyle, AIReal markSize, AIReal spacing, bool suppressStroke) {
-    AIPathStyle style = MakeMarkStyle(sourceStyle, markSize, spacing, suppressStroke);
+AIErr SetMarkStyle(AIArtHandle art, const AIPathStyle& sourceStyle, AIReal markSize, AIReal spacing,
+                     bool suppressStroke, AIReal explicitStrokeWidth) {
+    AIPathStyle style = MakeMarkStyle(sourceStyle, markSize, spacing, suppressStroke, explicitStrokeWidth);
     return sAIPathStyle->SetPathStyle(art, &style);
 }
 
 AIErr CreateClosedPath(AIArtHandle parentGroup, const std::vector<AIPathSegment>& segments,
                        const AIPathStyle& sourceStyle, AIReal markSize, AIReal spacing,
-                       bool suppressStroke, AIArtHandle& outArt) {
+                       bool suppressStroke, AIReal explicitStrokeWidth, AIArtHandle& outArt) {
     AIErr error = sAIArt->NewArt(kPathArt, kPlaceInsideOnTop, parentGroup, &outArt);
     if (error != kNoErr) return error;
     error = sAIPath->SetPathSegmentCount(outArt, static_cast<ai::int16>(segments.size()));
@@ -275,7 +269,7 @@ AIErr CreateClosedPath(AIArtHandle parentGroup, const std::vector<AIPathSegment>
     if (error != kNoErr) return error;
     error = sAIPath->SetPathClosed(outArt, true);
     if (error != kNoErr) return error;
-    return SetMarkStyle(outArt, sourceStyle, markSize, spacing, suppressStroke);
+    return SetMarkStyle(outArt, sourceStyle, markSize, spacing, suppressStroke, explicitStrokeWidth);
 }
 
 AIPathSegment StraightPoint(AIReal x, AIReal y) {
@@ -404,7 +398,7 @@ AIErr VHGetSourceMarkStyle(AIArtHandle art, AIPathStyle& style) {
 
 AIErr VHCreateMark(AIArtHandle parentGroup, int shape, AIReal cx, AIReal cy,
                    AIReal size, AIReal spacing, AIReal angleDegrees,
-                   const AIPathStyle& sourceStyle, bool suppressStroke) {
+                   const AIPathStyle& sourceStyle, bool suppressStroke, AIReal explicitStrokeWidth) {
     if (size <= static_cast<AIReal>(0.01)) return kNoErr;
     const AIReal r = size / 2;
     AIArtHandle art = nullptr;
@@ -435,7 +429,7 @@ AIErr VHCreateMark(AIArtHandle parentGroup, int shape, AIReal cx, AIReal cy,
         s[3].out.h = cx - r; s[3].out.v = cy + h;
         s[3].corner = false;
 
-        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, art);
+        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, explicitStrokeWidth, art);
     }
 
     const AIReal baseRadians = angleDegrees * static_cast<AIReal>(M_PI / 180.0);
@@ -458,17 +452,17 @@ AIErr VHCreateMark(AIArtHandle parentGroup, int shape, AIReal cx, AIReal cy,
         std::vector<AIPathSegment> s;
         s.reserve(pts.size());
         for (const auto& pt : pts) s.push_back(StraightPoint(pt.x, pt.y));
-        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, art);
+        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, explicitStrokeWidth, art);
     }
 
     if (shape == 3) {
         auto s = PolygonSegments(cx, cy, r, 3, static_cast<AIReal>(M_PI / 2.0) + baseRadians);
-        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, art);
+        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, explicitStrokeWidth, art);
     }
 
     if (shape == 4) {
         auto s = PolygonSegments(cx, cy, r, 6, static_cast<AIReal>(M_PI / 6.0) + baseRadians);
-        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, art);
+        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, explicitStrokeWidth, art);
     }
 
     if (shape == 5) {
@@ -483,7 +477,7 @@ AIErr VHCreateMark(AIArtHandle parentGroup, int shape, AIReal cx, AIReal cy,
                 cx + rr * static_cast<AIReal>(std::cos(static_cast<double>(a))),
                 cy + rr * static_cast<AIReal>(std::sin(static_cast<double>(a)))));
         }
-        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, art);
+        return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, explicitStrokeWidth, art);
     }
 
     // Line halftone: overlapping filled dashes create a continuous-looking line
@@ -501,5 +495,5 @@ AIErr VHCreateMark(AIArtHandle parentGroup, int shape, AIReal cx, AIReal cy,
         StraightPoint(p0.x, p0.y), StraightPoint(p1.x, p1.y),
         StraightPoint(p2.x, p2.y), StraightPoint(p3.x, p3.y)
     };
-    return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, art);
+    return CreateClosedPath(parentGroup, s, sourceStyle, size, spacing, suppressStroke, explicitStrokeWidth, art);
 }

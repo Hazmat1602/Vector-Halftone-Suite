@@ -39,4 +39,5 @@ AIReal VHNearestEdgeNormalAngle(AIReal x, AIReal y, const VHGeometry& geometry);
 AIErr VHGetSourceMarkStyle(AIArtHandle art, AIPathStyle& style);
 AIErr VHCreateMark(AIArtHandle parentGroup, int shape, AIReal cx, AIReal cy,
                    AIReal size, AIReal spacing, AIReal angleDegrees,
-                   const AIPathStyle& sourceStyle, bool suppressStroke = false);
+                   const AIPathStyle& sourceStyle, bool suppressStroke = false,
+                   AIReal explicitStrokeWidth = static_cast<AIReal>(0));

@@ -269,8 +269,13 @@ void PopulateCombos(HWND hwnd) {
 
 void UpdateDependentControls(HWND hwnd) {
     const bool inward = ComboBox_GetCurSel(GetDlgItem(hwnd, ID_GLOW_MODE)) != 1;
+    const bool followEdge = Button_GetCheck(GetDlgItem(hwnd, ID_FOLLOW_CURVE)) == BST_CHECKED;
     EnableWindow(GetDlgItem(hwnd, ID_SOLID_CENTER), inward ? TRUE : FALSE);
     EnableWindow(GetDlgItem(hwnd, ID_CLIP_SOURCE), inward ? TRUE : FALSE);
+    // Edge-follow mode replaces the global screen with contour-relative rows.
+    // Screen angle and stagger therefore have no geometric meaning in this mode.
+    EnableWindow(GetDlgItem(hwnd, ID_ANGLE), followEdge ? FALSE : TRUE);
+    EnableWindow(GetDlgItem(hwnd, ID_STAGGER), followEdge ? FALSE : TRUE);
 }
 
 void PopulateFields(HWND hwnd, DialogState& state) {
@@ -455,7 +460,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         AddLabel(hwnd, L"Softness", rightLabelX, 127, 94); AddControl(hwnd, L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, rightEditX, 123, 72, 23, ID_SOFTNESS); AddUnit(hwnd, L"%", 488, 123);
         AddLabel(hwnd, L"Fade curve", rightLabelX, 159, 94); AddControl(hwnd, L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, rightEditX, 155, 72, 23, ID_GAMMA);
         AddControl(hwnd, L"BUTTON", L"Invert tone", BS_AUTOCHECKBOX | WS_TABSTOP, labelX, 194, 150, 22, ID_INVERT);
-        AddControl(hwnd, L"BUTTON", L"Make centre solid", BS_AUTOCHECKBOX | WS_TABSTOP, labelX, 221, 210, 22, ID_SOLID_CENTER);
+        AddControl(hwnd, L"BUTTON", L"Solid centre", BS_AUTOCHECKBOX | WS_TABSTOP, labelX, 221, 210, 22, ID_SOLID_CENTER);
 
         AddSection(hwnd, L"Halftone", 264);
         AddLabel(hwnd, L"Mark shape", labelX, 292); AddControl(hwnd, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, editX, 288, 218, 210, ID_SHAPE);
@@ -465,7 +470,7 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         AddLabel(hwnd, L"Cull below", labelX, 421); AddControl(hwnd, L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, editX, 417, editW, 23, ID_CULL_SIZE); AddUnit(hwnd, L"pt", unitX, 417);
         AddLabel(hwnd, L"Screen angle", rightLabelX, 325, 104); AddControl(hwnd, L"EDIT", L"", WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, rightEditX, 321, 72, 23, ID_ANGLE); AddUnit(hwnd, L"°", 488, 321);
         AddLabel(hwnd, L"Curve quality", rightLabelX, 357, 104); AddControl(hwnd, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, rightEditX, 353, 98, 150, ID_SAMPLES);
-        AddControl(hwnd, L"BUTTON", L"Marks perpendicular to edge", BS_AUTOCHECKBOX | WS_TABSTOP, rightLabelX, 386, 226, 24, ID_FOLLOW_CURVE);
+        AddControl(hwnd, L"BUTTON", L"Follow edge contours", BS_AUTOCHECKBOX | WS_TABSTOP, rightLabelX, 386, 226, 24, ID_FOLLOW_CURVE);
         AddControl(hwnd, L"BUTTON", L"Stagger rows", BS_AUTOCHECKBOX | WS_TABSTOP, labelX, 453, 160, 22, ID_STAGGER);
 
         AddSection(hwnd, L"Output", 496);
@@ -575,6 +580,9 @@ LRESULT CALLBACK SettingsWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 return 0;
             }
             if (id == ID_GLOW_MODE && notification == CBN_SELCHANGE) {
+                UpdateDependentControls(hwnd);
+            }
+            if (id == ID_FOLLOW_CURVE && notification == BN_CLICKED) {
                 UpdateDependentControls(hwnd);
             }
             if (id == ID_PREVIEW && notification == BN_CLICKED) {

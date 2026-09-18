@@ -107,6 +107,7 @@
     <ClCompile Include="Source\VectorHalftoneEffectSuites.cpp" />
     <ClCompile Include="Source\VectorHalftoneGeometry.cpp" />
     <ClCompile Include="Source\VectorHalftoneDialogWin.cpp" />
+    <ClCompile Include="Source\VectorHalftoneExtraDialogsWin.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Source\VectorHalftoneEffectPlugin.h" />
@@ -115,6 +116,8 @@
     <ClInclude Include="Source\VectorHalftoneParams.h" />
     <ClInclude Include="Source\VectorHalftoneGeometry.h" />
     <ClInclude Include="Source\VectorHalftoneDialogWin.h" />
+    <ClInclude Include="Source\VectorHalftoneExtraDialogsWin.h" />
+    <ClInclude Include="Source\VectorHalftoneExtraParams.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="Resources\Win\VectorHalftoneEffect.rc" />
