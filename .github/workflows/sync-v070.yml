@@ -1,0 +1,42 @@
+name: Sync Vector Halftone v0.7.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.sync-v070/ready'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct v0.7.0 source package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .sync-v070/part-* | base64 --decode > /tmp/vector-halftone-v070.zip
+          mkdir -p /tmp/vector-halftone-v070
+          unzip -q /tmp/vector-halftone-v070.zip -d /tmp/vector-halftone-v070
+          src="/tmp/vector-halftone-v070/vector-halftone-live-effect-v0.7.0"
+          test -f "$src/VectorHalftoneEffect.vcxproj"
+          cp -a "$src"/. .
+          rm -rf .sync-v070
+          rm -f .github/workflows/sync-v070.yml
+
+      - name: Commit complete source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "Sync complete Vector Halftone Suite v0.7.0"
+          git push
