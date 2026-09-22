@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cwchar>
+#include <string>
 
 namespace {
 
