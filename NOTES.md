@@ -1,40 +1,47 @@
-# v0.7.0 engineering notes
+# v0.8.0 engineering notes
 
-## Simple Colour Halftone redesign
+## Patterned Halftone
 
-The v0.6 opacity-mask implementation did not match the referenced Illustrator tutorial. v0.7 introduces `mode=2`, a direct-vector renderer that models the useful end result instead of reproducing the tutorial's temporary raster/trace steps.
+v0.8 removes **Simple Colour Halftone** from the visible Effect menu and introduces a dedicated **Patterned Halftone** command.
 
-### Direct-vector pipeline
+The old Simple Colour Halftone Live Effect ID remains registered without a menu item so existing v0.5-v0.7 documents keep rendering.
 
-1. Establish a shared regular grid over the source bounds.
-2. Rotate the grid by `gridAngle` and optionally stagger alternate rows.
-3. Determine tone from either a procedural linear/radial gradient or a one-time ARGB sample of the rendered source artwork.
-4. Convert tone to mark diameter with square-root/area behaviour.
-5. Cull tiny marks.
-6. Create the selected vector mark shape directly with `VHCreateMark`.
-7. Optionally add a same-colour connecting stroke.
-8. Optionally clip the marks to the source path/compound path.
+### Triangle renderer
 
-No Image Trace, Pathfinder Unite or replacement-script stage is required.
+Patterned Halftone currently fixes the mark family to triangles.
 
-## Source artwork/image sampling
+1. Raster-sample the rendered source appearance to an ARGB lookup surface.
+2. Evaluate luminance/alpha at each pattern cell.
+3. Convert darkness to radius with square-root/area behaviour.
+4. Lay cells out on a staggered regular grid.
+5. Alternate triangle orientation by 180 degrees from cell to cell.
+6. Rotate the entire pattern with the Pattern Angle setting.
+7. Emit clean Illustrator vector paths and clip to vector source silhouettes where possible.
 
-Artwork mode rasterizes the input to temporary 72-PPI ARGB only as a tone/alpha lookup surface. The raster is disposed before the Live Effect returns. Output marks remain vector.
+The implementation reuses the v0.7 direct-vector luminance sampler internally rather than duplicating the raster lookup pipeline.
 
-Tone is based on RGB luminance and alpha. Transparent pixels produce no marks.
+## Compact dialog
 
-## Connecting stroke
+Patterned Halftone intentionally follows the Photoshop-style **Color Halftone** dialog:
 
-`VHCreateMark` now accepts an optional explicit stroke width. Normal halftone renderers still suppress repeated source strokes; Simple Colour Halftone can explicitly request a same-fill-colour stroke to make neighbouring shapes connect.
+- Max. Radius
+- Pattern Angle
+- Min. Radius
+- Spacing (0 = auto)
+- OK / Cancel
+
+The same anti-aliased owner-drawn button renderer is used.
 
 ## Compatibility
 
-- mode 0 = v0.5 flat pattern
-- mode 1 = v0.6 opacity-mask experiment
-- mode 2 = v0.7 direct vector
+Hidden registrations retained:
 
-Legacy dictionary keys are still read/written. New keys include source mode, min/max/cull size, connecting-stroke toggle and stroke width.
+- legacy Vector Halftone
+- legacy Halftone Gradient
+- Simple Colour Halftone
+
+No existing internal effect ID was renamed.
 
 ## Build validation
 
-The package cannot be linked against the user's Illustrator 2026 SDK in this environment. Run `./build.ps1` in the SDK samplecode project and report any compiler diagnostics for SDK-specific adjustments.
+Run `.\build.ps1` from the project folder inside the Illustrator 2026 SDK `samplecode` directory. Any SDK/compiler diagnostics should be treated as the next validation step.
