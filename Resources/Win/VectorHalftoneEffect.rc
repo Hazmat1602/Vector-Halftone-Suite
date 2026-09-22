@@ -16,8 +16,8 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_AUS
 // SDK's historical common/win/verinfo.rc helper, which is not present in
 // current Illustrator SDK layouts.
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,7,0,0
- PRODUCTVERSION 0,7,0,0
+ FILEVERSION 0,8,0,0
+ PRODUCTVERSION 0,8,0,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -34,11 +34,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Vector Halftone\0"
             VALUE "FileDescription", "Vector Halftone Suite Illustrator Live Effects\0"
-            VALUE "FileVersion", "0.7.0.0\0"
+            VALUE "FileVersion", "0.8.0.0\0"
             VALUE "InternalName", "VectorHalftoneEffect\0"
             VALUE "OriginalFilename", "VectorHalftoneEffect.aip\0"
             VALUE "ProductName", "Vector Halftone Suite\0"
-            VALUE "ProductVersion", "0.7.0.0\0"
+            VALUE "ProductVersion", "0.8.0.0\0"
         END
     END
     BLOCK "VarFileInfo"

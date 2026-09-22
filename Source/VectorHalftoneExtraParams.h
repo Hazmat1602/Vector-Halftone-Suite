@@ -49,6 +49,9 @@ struct VectorSimpleColourHalftoneParams {
     double maxSize = 14.0;           // maximum mark diameter/extent, document points
     double cullSize = 0.15;          // skip marks smaller than this size
     int stagger = 0;
+    // Internal rendering option used by Patterned Halftone. Legacy Simple Colour
+    // documents leave this disabled, so their appearance is unchanged.
+    int alternateTriangles = 0;
     int connectStroke = 0;           // outline each mark using its fill colour
     double strokeWidth = 0.0;        // document points
     int clipToSource = 1;
@@ -66,6 +69,21 @@ struct VectorSimpleColourHalftoneParams {
 
 inline VectorSimpleColourHalftoneParams VectorSimpleColourHalftoneDefaults() {
     return VectorSimpleColourHalftoneParams{};
+}
+
+// Patterned Halftone v0.8. Triangle is the first pattern. The renderer samples
+// the source artwork's luminance like Color Halftone, but produces one clean,
+// editable vector triangle per screen cell instead of channel-separated dots.
+struct VectorPatternedHalftoneParams {
+    double maxRadius = 12.0;          // maximum triangle circumradius, document points
+    double patternAngle = 0.0;        // rotates the lattice and triangle pattern
+    double minRadius = 0.0;           // minimum triangle circumradius, document points
+    double spacing = 0.0;             // 0 = auto (maxRadius * sqrt(2))
+    int preserveSourceAppearance = 0;
+};
+
+inline VectorPatternedHalftoneParams VectorPatternedHalftoneDefaults() {
+    return VectorPatternedHalftoneParams{};
 }
 
 struct VectorPhotoshopHalftoneParams {

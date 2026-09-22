@@ -1,76 +1,59 @@
-# Vector Halftone Suite v0.7.0
+# Vector Halftone Suite v0.8.0
 
 Native Windows C++ Live Effects for Adobe Illustrator 2026.
 
-The suite currently exposes two effects under **Effect > Vector Halftone**:
+The suite exposes two new-effect commands under **Effect > Vector Halftone**:
 
-- **Simple Colour Halftone...** — direct editable vector halftone patterns driven by a gradient or the selected artwork/image.
-- **Color Halftone...** — the Photoshop-style multi-channel Color Halftone recreation with vector output.
+- **Patterned Halftone...** — source-luminance-driven editable vector triangle halftone.
+- **Color Halftone...** — Photoshop-style multi-channel Color Halftone recreation with vector output.
 
-The older Vector Halftone / Halftone Gradient effects remain registered internally so existing documents created with earlier development builds can still resolve them, but they are not shown as new menu commands.
+**Simple Colour Halftone** is no longer shown as a new menu command. Its internal effect registration and renderer remain in the plug-in so documents created with v0.5-v0.7 continue to resolve and render correctly.
 
-## Simple Colour Halftone
+## Patterned Halftone
 
-v0.7 replaces the previous opacity-mask interpretation with the workflow the Illustrator tutorial was actually using.
+Patterned Halftone uses the same general idea as Color Halftone — sample the rendered source artwork and convert tone into mark size — but it creates one clean vector shape per screen cell instead of separate process-colour circles.
 
-The tutorial uses a gradient, Color Halftone, Rasterize, Image Trace, Expand, Pathfinder Unite and `replaceItems.jsx` to recover clean circles. The plug-in skips those intermediary stages and creates the final clean vector marks directly.
+v0.8 starts with an alternating triangle pattern inspired by triangular tessellation halftones:
 
-### Source
+- darker source areas produce larger triangles;
+- lighter source areas produce smaller triangles;
+- alternate cells flip the triangle 180 degrees;
+- alternate rows are staggered to create a triangular lattice;
+- the whole lattice rotates with **Pattern Angle**;
+- output marks remain Illustrator vector paths.
 
-**Size source**
+### Controls
 
-- **Gradient** — use the procedural controls in the dialog.
-- **Artwork / image** — raster-sample the rendered selected artwork only to determine tone/alpha; the generated output remains vector.
+The dialog intentionally mirrors the compact Color Halftone window:
 
-**Gradient controls**
+- **Max. Radius** — largest triangle circumradius.
+- **Pattern Angle** — rotates the grid/pattern.
+- **Min. Radius** — smallest generated triangle.
+- **Spacing** — centre-to-centre screen spacing. Enter **0** for automatic spacing derived from Max. Radius.
 
-- Linear / Radial
-- Gradient angle
-- Tone midpoint
-- Tone scale
-- Reverse
-
-Darkness controls mark area, so mark diameter follows a square-root tone mapping similar to a traditional halftone screen rather than a purely linear diameter ramp.
-
-### Pattern
-
-- Shape: Circle, Square, Diamond, Triangle, Hexagon, Star or Line
-- Grid spacing
-- Grid angle
-- Minimum size
-- Maximum size
-- Cull below
-- Optional staggered rows
-
-The defaults use a 45-degree grid and keep the largest marks separated, matching the intent of the tutorial after the dark end of its gradient is lightened.
+The radius fields follow the current Illustrator document ruler units.
 
 ### Output
 
-- **Connecting stroke** with an explicit stroke width. The stroke uses the mark fill colour and can be increased until neighbouring shapes touch/connect.
-- **Clip exactly to source** for vector path/compound-path inputs.
-- **Preserve original appearance underneath** when the halftone should overlay the source rather than replace it.
+Patterned Halftone temporarily raster-samples the selected artwork at 72 PPI only to read luminance/alpha. The generated result itself is vector.
 
-Generated marks are real Illustrator vector paths. While the effect is live they are owned by the Live Effect result; use **Object > Expand Appearance** when you want to directly select/edit individual marks or export the expanded artwork as SVG.
+For path and compound-path inputs the result is clipped to the source silhouette. Transparent areas produce no marks.
 
-### Colour behaviour
-
-For procedural Gradient mode, solid source fills/strokes are inherited. Gradient/pattern/advanced source paints are treated as the size source rather than copied onto every dot, so generated marks fall back to a clean monochrome fill.
-
-Artwork / image mode emits a monochrome vector screen driven by sampled luminance and alpha.
+While the effect remains live, the generated paths belong to the Live Effect result. Use **Object > Expand Appearance** when you want to select/edit individual triangles or export the expanded result as SVG.
 
 ## Color Halftone
 
-The Photoshop-style Color Halftone effect remains separate. It keeps the compact Photoshop-like dialog, document-unit display for Max Radius, calibrated channel-screen geometry and vector output.
+Color Halftone remains the Photoshop-oriented effect with its compact dialog, document-unit Max Radius display, calibrated channel screens and vector output.
 
 ## Backwards compatibility
 
-Simple Colour Halftone render modes are retained internally:
+The following older effect IDs remain registered without menu items:
 
-- `mode=0` — v0.5 flat pattern
-- `mode=1` — v0.6 opacity-mask shading experiment
-- `mode=2` — v0.7 direct-vector gradient/artwork halftone
+- Vector Halftone
+- Halftone Gradient
+- Simple Colour Halftone
 
-Existing artwork continues to render with its stored mode. Opening an older Simple Colour Halftone instance in the current dialog opts that instance into the v0.7 controls when the edit is committed.
+That allows documents made with development versions v0.1-v0.7 to continue resolving their stored Live Effects.
 
 ## Requirements
 
@@ -82,7 +65,7 @@ Existing artwork continues to render with its stored mode. Opening an older Simp
 
 ## Build
 
-Place the project inside Illustrator SDK `samplecode` and run:
+Place the project directly inside the Illustrator SDK `samplecode` folder and run:
 
 ```powershell
 .\build.ps1
@@ -100,4 +83,4 @@ Close Illustrator, replace the existing plug-in in Illustrator's Plug-ins folder
 
 ## Development status
 
-This source is designed for the Illustrator 2026 SDK. It has been source-level sanity checked here, but the authoritative compile/runtime test is the SDK build on a Windows machine with Illustrator installed.
+The source has been sanity checked at source level, but the authoritative compile/runtime test is the Illustrator 2026 SDK build on Windows.

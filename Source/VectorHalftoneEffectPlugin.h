@@ -23,7 +23,8 @@ public:
 private:
     AILiveEffectHandle fLiveEffect;
     AILiveEffectHandle fGradientEffect; // hidden legacy effect
-    AILiveEffectHandle fSimpleColourHalftoneEffect;
+    AILiveEffectHandle fSimpleColourHalftoneEffect; // hidden compatibility effect
+    AILiveEffectHandle fPatternedHalftoneEffect;
     AILiveEffectHandle fPhotoshopHalftoneEffect;
 
     ASErr AddLiveEffect(SPInterfaceMessage* message);
@@ -36,12 +37,16 @@ private:
     ASErr WriteGradientParameters(const AILiveEffectParameters& dict, const VectorHalftoneGradientParams& p) const;
     ASErr ReadSimpleColourParameters(const AILiveEffectParameters& dict, VectorSimpleColourHalftoneParams& p) const;
     ASErr WriteSimpleColourParameters(const AILiveEffectParameters& dict, const VectorSimpleColourHalftoneParams& p) const;
+    ASErr ReadPatternedParameters(const AILiveEffectParameters& dict, VectorPatternedHalftoneParams& p) const;
+    ASErr WritePatternedParameters(const AILiveEffectParameters& dict, const VectorPatternedHalftoneParams& p) const;
     ASErr ReadPhotoshopParameters(const AILiveEffectParameters& dict, VectorPhotoshopHalftoneParams& p) const;
     ASErr WritePhotoshopParameters(const AILiveEffectParameters& dict, const VectorPhotoshopHalftoneParams& p) const;
     ASErr EditGradientParameters(AILiveEffectEditParamMessage* message);
     ASErr EditSimpleColourParameters(AILiveEffectEditParamMessage* message);
+    ASErr EditPatternedParameters(AILiveEffectEditParamMessage* message);
     ASErr EditPhotoshopParameters(AILiveEffectEditParamMessage* message);
     ASErr BuildGradientHalftone(AIArtHandle inputArt, AIArtHandle& outputArt, const VectorHalftoneGradientParams& p) const;
     ASErr BuildSimpleColourHalftone(AIArtHandle inputArt, AIArtHandle& outputArt, const VectorSimpleColourHalftoneParams& p) const;
+    ASErr BuildPatternedHalftone(AIArtHandle inputArt, AIArtHandle& outputArt, const VectorPatternedHalftoneParams& p) const;
     ASErr BuildPhotoshopHalftone(AIArtHandle inputArt, AIArtHandle& outputArt, const VectorPhotoshopHalftoneParams& p) const;
 };
