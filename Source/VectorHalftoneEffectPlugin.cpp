@@ -80,6 +80,12 @@ constexpr const char* KS_STAGGER = "vhs.stagger";
 constexpr const char* KS_CLIP = "vhs.clip";
 constexpr const char* KS_PRESERVE = "vhs.preserve";
 
+constexpr const char* KT_RADIUS = "vht.maxRadius";
+constexpr const char* KT_ANGLE = "vht.patternAngle";
+constexpr const char* KT_MIN_RADIUS = "vht.minRadius";
+constexpr const char* KT_SPACING = "vht.spacing";
+constexpr const char* KT_PRESERVE = "vht.preserve";
+
 constexpr const char* KP_RADIUS = "vhp.maxRadius";
 constexpr const char* KP_A1 = "vhp.angle1";
 constexpr const char* KP_A2 = "vhp.angle2";
@@ -548,7 +554,7 @@ void FixupReload(Plugin* plugin) {
 }
 
 VectorHalftoneEffectPlugin::VectorHalftoneEffectPlugin(SPPluginRef pluginRef)
-    : Plugin(pluginRef), fLiveEffect(nullptr), fGradientEffect(nullptr), fSimpleColourHalftoneEffect(nullptr), fPhotoshopHalftoneEffect(nullptr) {
+    : Plugin(pluginRef), fLiveEffect(nullptr), fGradientEffect(nullptr), fSimpleColourHalftoneEffect(nullptr), fPatternedHalftoneEffect(nullptr), fPhotoshopHalftoneEffect(nullptr) {
 #ifdef WIN_ENV
     strncpy_s(fPluginName, kMaxStringLength, kVectorHalftonePluginName, _TRUNCATE);
 #else
@@ -582,7 +588,7 @@ ASErr VectorHalftoneEffectPlugin::ShutdownPlugin(SPInterfaceMessage* message) {
 ASErr VectorHalftoneEffectPlugin::AddLiveEffect(SPInterfaceMessage* message) {
     // Register the original Vector Halftone for document compatibility, but do
     // not add a menu item from v0.5 onward. Existing artwork can still edit and
-    // render the effect; new users only see Simple Colour Halftone + Color Halftone.
+    // render the effect; new users only see Patterned Halftone + Color Halftone.
     AILiveEffectData effectData{};
     effectData.self = message->d.self;
     effectData.name = kVectorHalftoneEffectName;
@@ -632,12 +638,18 @@ ASErr VectorHalftoneEffectPlugin::AddExtraLiveEffects(SPInterfaceMessage* messag
                            &fGradientEffect);
     if (error != kNoErr) return error;
 
+    // Hidden compatibility registration for v0.5-v0.7 Simple Colour Halftone.
+    // Existing documents still resolve and render, but no new menu item is shown.
     error = registerEffect(kVectorSimpleColourHalftoneEffectName, kVectorSimpleColourHalftoneEffectTitle,
                            kPathInputArt | kCompoundPathInputArt | kGroupInputArt,
                            &fSimpleColourHalftoneEffect);
     if (error != kNoErr) return error;
-    error = addMenu(fSimpleColourHalftoneEffect, kVectorSimpleColourHalftoneEffectName,
-                    kVectorSimpleColourHalftoneEffectMenuTitle);
+
+    error = registerEffect(kVectorPatternedHalftoneEffectName, kVectorPatternedHalftoneEffectTitle,
+                           kAnyInputArtButPluginArt, &fPatternedHalftoneEffect);
+    if (error != kNoErr) return error;
+    error = addMenu(fPatternedHalftoneEffect, kVectorPatternedHalftoneEffectName,
+                    kVectorPatternedHalftoneEffectMenuTitle);
     if (error != kNoErr) return error;
 
     error = registerEffect(kVectorPhotoshopHalftoneEffectName, kVectorPhotoshopHalftoneEffectTitle,
@@ -712,6 +724,7 @@ ASErr VectorHalftoneEffectPlugin::EditLiveEffectParameters(AILiveEffectEditParam
     AIErr error = kNoErr;
     if (message && message->effect == fGradientEffect) return EditGradientParameters(message);
     if (message && message->effect == fSimpleColourHalftoneEffect) return EditSimpleColourParameters(message);
+    if (message && message->effect == fPatternedHalftoneEffect) return EditPatternedParameters(message);
     if (message && message->effect == fPhotoshopHalftoneEffect) return EditPhotoshopParameters(message);
     try {
         VectorHalftoneParams params;
@@ -813,6 +826,25 @@ ASErr VectorHalftoneEffectPlugin::GoLiveEffect(AILiveEffectGoMessage* message) {
             AIArtHandle inputArt = message->art;
             AIArtHandle output = nullptr;
             e = BuildSimpleColourHalftone(inputArt, output, params);
+            if (e != kNoErr) return e;
+            if (output) {
+                if (!params.preserveSourceAppearance) {
+                    e = sAIArt->DisposeArt(inputArt);
+                    if (e != kNoErr) return e;
+                }
+                message->art = output;
+            }
+            return kNoErr;
+        } catch (ai::Error& ex) { return ex; } catch (...) { return kCantHappenErr; }
+    }
+    if (message && message->effect == fPatternedHalftoneEffect) {
+        try {
+            VectorPatternedHalftoneParams params;
+            AIErr e = ReadPatternedParameters(message->parameters, params);
+            if (e != kNoErr) return e;
+            AIArtHandle inputArt = message->art;
+            AIArtHandle output = nullptr;
+            e = BuildPatternedHalftone(inputArt, output, params);
             if (e != kNoErr) return e;
             if (output) {
                 if (!params.preserveSourceAppearance) {
@@ -1263,6 +1295,30 @@ ASErr VectorHalftoneEffectPlugin::WriteSimpleColourParameters(const AILiveEffect
     return kNoErr;
 }
 
+ASErr VectorHalftoneEffectPlugin::ReadPatternedParameters(const AILiveEffectParameters& dict,
+                                                           VectorPatternedHalftoneParams& p) const {
+    p = VectorPatternedHalftoneDefaults();
+    p.maxRadius = ReadRealOr(dict, KT_RADIUS, static_cast<AIReal>(p.maxRadius));
+    p.patternAngle = ReadRealOr(dict, KT_ANGLE, static_cast<AIReal>(p.patternAngle));
+    p.minRadius = ReadRealOr(dict, KT_MIN_RADIUS, static_cast<AIReal>(p.minRadius));
+    p.spacing = ReadRealOr(dict, KT_SPACING, static_cast<AIReal>(p.spacing));
+    p.preserveSourceAppearance = static_cast<int>(ReadIntOr(dict, KT_PRESERVE, p.preserveSourceAppearance));
+    return kNoErr;
+}
+
+ASErr VectorHalftoneEffectPlugin::WritePatternedParameters(const AILiveEffectParameters& dict,
+                                                            const VectorPatternedHalftoneParams& p) const {
+    AIErr error = WriteReal(dict, KT_RADIUS, static_cast<AIReal>(p.maxRadius));
+    if (error != kNoErr) return error;
+    error = WriteReal(dict, KT_ANGLE, static_cast<AIReal>(p.patternAngle));
+    if (error != kNoErr) return error;
+    error = WriteReal(dict, KT_MIN_RADIUS, static_cast<AIReal>(p.minRadius));
+    if (error != kNoErr) return error;
+    error = WriteReal(dict, KT_SPACING, static_cast<AIReal>(p.spacing));
+    if (error != kNoErr) return error;
+    return WriteInt(dict, KT_PRESERVE, static_cast<ai::int32>(p.preserveSourceAppearance));
+}
+
 ASErr VectorHalftoneEffectPlugin::ReadPhotoshopParameters(const AILiveEffectParameters& dict,
                                                            VectorPhotoshopHalftoneParams& p) const {
     p = VectorPhotoshopHalftoneDefaults();
@@ -1330,6 +1386,27 @@ ASErr VectorHalftoneEffectPlugin::EditSimpleColourParameters(AILiveEffectEditPar
     if(previewed){if(message->isNewInstance)return sAIUndo->UndoChanges();error=WriteSimpleColourParameters(message->parameters,saved);if(error!=kNoErr)return error;return sAILiveEffect->UpdateParameters(message->context);}
 #else
     error=WriteSimpleColourParameters(message->parameters,p); if(error!=kNoErr)return error; return sAILiveEffect->UpdateParameters(message->context);
+#endif
+    return kNoErr;
+}
+
+ASErr VectorHalftoneEffectPlugin::EditPatternedParameters(AILiveEffectEditParamMessage* message) {
+    AIErr error = kNoErr;
+    VectorPatternedHalftoneParams p;
+    error = ReadPatternedParameters(message->parameters, p); if (error != kNoErr) return error;
+    if (message->isNewInstance) p = VectorPatternedHalftoneDefaults();
+    const auto saved = p; bool previewed = false;
+#ifdef WIN_ENV
+    AIWindowRef appWindow = nullptr;
+    error = sAIAppContext->GetPlatformAppWindow(&appWindow); if (error != kNoErr) return error;
+    PatternedHalftonePreviewCallback cb = [this,message,&previewed](const VectorPatternedHalftoneParams& v){
+        AIErr e = WritePatternedParameters(message->parameters, v); if (e != kNoErr) return false;
+        e = sAILiveEffect->UpdateParameters(message->context); if (e == kNoErr) previewed = true; return e == kNoErr; };
+    const int result = ShowVectorPatternedHalftoneDialog(reinterpret_cast<HWND>(appWindow), p, cb);
+    if (result == 2) { error = WritePatternedParameters(message->parameters, p); if (error != kNoErr) return error; return sAILiveEffect->UpdateParameters(message->context); }
+    if (previewed) { if (message->isNewInstance) return sAIUndo->UndoChanges(); error = WritePatternedParameters(message->parameters, saved); if (error != kNoErr) return error; return sAILiveEffect->UpdateParameters(message->context); }
+#else
+    error = WritePatternedParameters(message->parameters, p); if (error != kNoErr) return error; return sAILiveEffect->UpdateParameters(message->context);
 #endif
     return kNoErr;
 }
@@ -1736,8 +1813,15 @@ ASErr VectorHalftoneEffectPlugin::BuildSimpleColourHalftone(AIArtHandle inputArt
                     const AIReal size = static_cast<AIReal>(p.minSize +
                         (p.maxSize - p.minSize) * shapeT);
                     if (size < static_cast<AIReal>(p.cullSize) || size <= static_cast<AIReal>(0.01)) continue;
+                    AIReal markAngle = static_cast<AIReal>(p.gridAngle);
+                    if (p.alternateTriangles && p.shape == 3) {
+                        // Alternating 180-degree flips create the left/right tessellated
+                        // triangle rhythm used by Patterned Halftone. +90 degrees makes
+                        // an unrotated pattern point horizontally like the reference.
+                        markAngle += static_cast<AIReal>(90.0 + (((row + col) & 1) ? 180.0 : 0.0));
+                    }
                     error = VHCreateMark(markGroup, p.shape, px, py, size, spacing,
-                        static_cast<AIReal>(p.gridAngle), markStyle, !p.connectStroke,
+                        markAngle, markStyle, !p.connectStroke,
                         p.connectStroke ? static_cast<AIReal>(p.strokeWidth) : static_cast<AIReal>(0));
                     if (error != kNoErr) return failDirect(error);
                 }
@@ -1981,6 +2065,33 @@ ASErr VectorHalftoneEffectPlugin::BuildSimpleColourHalftone(AIArtHandle inputArt
 simple_shade_fail:
     if (outputGroup) sAIArt->DisposeArt(outputGroup);
     return error;
+}
+
+ASErr VectorHalftoneEffectPlugin::BuildPatternedHalftone(AIArtHandle inputArt, AIArtHandle& outputArt,
+                                                          const VectorPatternedHalftoneParams& p) const {
+    if (!inputArt || p.maxRadius <= 0.0 || p.minRadius < 0.0 ||
+        p.maxRadius < p.minRadius || p.spacing < 0.0)
+        return kBadParameterErr;
+
+    // Patterned Halftone intentionally reuses the direct-vector luminance sampler
+    // from Simple Colour Halftone. The old effect remains hidden for document
+    // compatibility; this new effect fixes the mark family to alternating triangles.
+    VectorSimpleColourHalftoneParams direct = VectorSimpleColourHalftoneDefaults();
+    direct.mode = 2;
+    direct.sourceMode = 1;
+    direct.shape = 3; // triangle
+    direct.spacing = p.spacing > 0.0 ? p.spacing : p.maxRadius * std::sqrt(2.0);
+    direct.gridAngle = p.patternAngle;
+    direct.minSize = p.minRadius * 2.0;
+    direct.maxSize = p.maxRadius * 2.0;
+    direct.cullSize = 0.05;
+    direct.stagger = 1;
+    direct.alternateTriangles = 1;
+    direct.connectStroke = 0;
+    direct.strokeWidth = 0.0;
+    direct.clipToSource = 1;
+    direct.preserveSourceAppearance = p.preserveSourceAppearance;
+    return BuildSimpleColourHalftone(inputArt, outputArt, direct);
 }
 
 ASErr VectorHalftoneEffectPlugin::BuildPhotoshopHalftone(AIArtHandle inputArt, AIArtHandle& outputArt,
