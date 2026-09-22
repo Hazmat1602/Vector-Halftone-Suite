@@ -357,6 +357,7 @@ LRESULT CALLBACK SimpleProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 // Photoshop exposes are shown.  Vector-only implementation details (sampling,
 // culling, preserving the source appearance) remain internal parameters.
 enum PId { P_RADIUS=3001,P_A1,P_A2,P_A3,P_A4,P_OK,P_CANCEL };
+enum TId { T_RADIUS=4001,T_ANGLE,T_MIN_RADIUS,T_SPACING,T_OK,T_CANCEL };
 struct PState {
     VectorPhotoshopHalftoneParams p;
     PhotoshopHalftonePreviewCallback cb;
@@ -367,6 +368,16 @@ struct PState {
     // present that physical radius in the Illustrator document's ruler unit.
     double pointsPerDisplayUnit = 1.0;
     const wchar_t* displayUnitLabel = L"(px)";
+};
+
+struct TState {
+    VectorPatternedHalftoneParams p;
+    PatternedHalftonePreviewCallback cb;
+    bool done=false;
+    int result=0;
+    bool populating=false;
+    SimpleUnitInfo unit{};
+    std::wstring unitLabel=L"(pt)";
 };
 
 constexpr int kPsDialogW = 364;
@@ -547,7 +558,8 @@ void DrawPhotoshopButton(const DRAWITEMSTRUCT* dis) {
     RECT button = dis->rcItem;
     InflateRect(&button, -1, -1);
 
-    COLORREF border = dis->CtlID == P_OK ? kPsButtonBorder : kPsButtonBorderDim;
+    const bool primary = dis->CtlID == P_OK || dis->CtlID == T_OK;
+    COLORREF border = primary ? kPsButtonBorder : kPsButtonBorderDim;
     COLORREF fill = pressed ? RGB(96,96,96) : kPsBody;
     if (focused && !disabled) border = RGB(210,210,210);
     if (disabled) border = RGB(100,100,100);
@@ -722,6 +734,139 @@ LRESULT CALLBACK PhotoshopProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcW(h,m,w,l);
 }
 
+
+constexpr int kPatternDialogW = 364;
+constexpr int kPatternDialogH = 210;
+
+void ConfigurePatternDisplayUnit(TState& s) {
+    s.unit = CurrentDocumentUnit();
+    s.unitLabel = L"(";
+    s.unitLabel += s.unit.label ? s.unit.label : L"pt";
+    s.unitLabel += L")";
+}
+
+bool ReadPatterned(HWND h, TState& s, bool) {
+    double d = 0.0;
+    if (!GetD(GetDlgItem(h,T_RADIUS),d) || d <= 0.0) return false;
+    s.p.maxRadius = d * s.unit.pointsPerUnit;
+    if (!GetD(GetDlgItem(h,T_ANGLE),d)) return false;
+    s.p.patternAngle = d;
+    if (!GetD(GetDlgItem(h,T_MIN_RADIUS),d) || d < 0.0) return false;
+    s.p.minRadius = d * s.unit.pointsPerUnit;
+    if (s.p.minRadius > s.p.maxRadius) return false;
+    if (!GetD(GetDlgItem(h,T_SPACING),d) || d < 0.0) return false;
+    s.p.spacing = d * s.unit.pointsPerUnit; // zero means automatic
+    return true;
+}
+
+void FillPatterned(HWND h, TState& s) {
+    s.populating = true;
+    SetD(GetDlgItem(h,T_RADIUS),s.p.maxRadius / s.unit.pointsPerUnit);
+    SetD(GetDlgItem(h,T_ANGLE),s.p.patternAngle);
+    SetD(GetDlgItem(h,T_MIN_RADIUS),s.p.minRadius / s.unit.pointsPerUnit);
+    SetD(GetDlgItem(h,T_SPACING),s.p.spacing / s.unit.pointsPerUnit);
+    s.populating = false;
+}
+
+LRESULT CALLBACK PatternedProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    TState* s = reinterpret_cast<TState*>(GetWindowLongPtrW(h,GWLP_USERDATA));
+    if (m == WM_NCCREATE) {
+        auto* cs = reinterpret_cast<CREATESTRUCTW*>(l);
+        s = reinterpret_cast<TState*>(cs->lpCreateParams);
+        SetWindowLongPtrW(h,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(s));
+    }
+
+    switch (m) {
+    case WM_CREATE: {
+        PsLabel(h,L"Max. Radius:",9,43,72);
+        PsAdd(h,L"EDIT",L"",ES_AUTOHSCROLL|WS_TABSTOP,83,40,104,19,T_RADIUS);
+        PsLabel(h,s ? s->unitLabel.c_str() : L"(pt)",196,43,55);
+
+        PsLabel(h,L"Pattern Angle (Degrees):",12,72,190);
+        PsLabel(h,L"Angle:",17,99,64);
+        PsAdd(h,L"EDIT",L"",ES_AUTOHSCROLL|WS_TABSTOP,82,95,103,19,T_ANGLE);
+
+        PsLabel(h,L"Min. Radius:",17,134,64);
+        PsAdd(h,L"EDIT",L"",ES_AUTOHSCROLL|WS_TABSTOP,82,130,103,19,T_MIN_RADIUS);
+        PsLabel(h,s ? s->unitLabel.c_str() : L"(pt)",196,134,55);
+
+        PsLabel(h,L"Spacing:",17,169,64);
+        PsAdd(h,L"EDIT",L"",ES_AUTOHSCROLL|WS_TABSTOP,82,165,103,19,T_SPACING);
+        PsLabel(h,L"(0 = auto)",196,169,60);
+
+        PsAdd(h,L"BUTTON",L"OK",BS_OWNERDRAW|WS_TABSTOP,256,45,91,25,T_OK);
+        PsAdd(h,L"BUTTON",L"Cancel",BS_OWNERDRAW|WS_TABSTOP,256,80,91,25,T_CANCEL);
+
+        if (s) FillPatterned(h,*s);
+        SetFocus(GetDlgItem(h,T_RADIUS));
+        SendMessageW(GetDlgItem(h,T_RADIUS),EM_SETSEL,0,-1);
+        return 0;
+    }
+    case WM_PAINT: {
+        PAINTSTRUCT ps{};
+        HDC dc=BeginPaint(h,&ps);
+        RECT r{}; GetClientRect(h,&r);
+        FillRect(dc,&r,PhotoshopBodyBrush());
+        RECT title{0,0,r.right,kPsTitleH};
+        HBRUSH tb=CreateSolidBrush(kPsTitle); FillRect(dc,&title,tb); DeleteObject(tb);
+        SetBkMode(dc,TRANSPARENT); SetTextColor(dc,RGB(250,250,250)); SelectObject(dc,PhotoshopFont());
+        RECT tr{10,7,250,28};
+        DrawTextW(dc,L"Patterned Halftone",-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+        HPEN closePen=CreatePen(PS_SOLID,1,RGB(245,245,245));
+        HGDIOBJ oldPen=SelectObject(dc,closePen);
+        MoveToEx(dc,343,11,nullptr); LineTo(dc,353,21);
+        MoveToEx(dc,353,11,nullptr); LineTo(dc,343,21);
+        SelectObject(dc,oldPen); DeleteObject(closePen);
+
+        PsEditBorder(dc,h,T_RADIUS,82,39,106,21);
+        PsEditBorder(dc,h,T_ANGLE,81,94,105,21);
+        PsEditBorder(dc,h,T_MIN_RADIUS,81,129,105,21);
+        PsEditBorder(dc,h,T_SPACING,81,164,105,21);
+        EndPaint(h,&ps);
+        return 0;
+    }
+    case WM_ERASEBKGND: return 1;
+    case WM_CTLCOLORSTATIC: {
+        HDC dc=reinterpret_cast<HDC>(w); SetBkMode(dc,TRANSPARENT); SetTextColor(dc,kPsText);
+        return reinterpret_cast<INT_PTR>(PhotoshopBodyBrush());
+    }
+    case WM_CTLCOLOREDIT: {
+        HDC dc=reinterpret_cast<HDC>(w); SetBkColor(dc,kPsField); SetTextColor(dc,RGB(225,225,225));
+        return reinterpret_cast<INT_PTR>(PhotoshopFieldBrush());
+    }
+    case WM_DRAWITEM:
+        DrawPhotoshopButton(reinterpret_cast<DRAWITEMSTRUCT*>(l)); return TRUE;
+    case WM_COMMAND:
+        if (s) {
+            const int id=LOWORD(w), note=HIWORD(w);
+            if (id==T_OK) {
+                if (ReadPatterned(h,*s,true)) { s->result=2; s->done=true; DestroyWindow(h); }
+                else MessageBeep(MB_ICONWARNING);
+                return 0;
+            }
+            if (id==T_CANCEL) { s->result=1; s->done=true; DestroyWindow(h); return 0; }
+            if (note==EN_SETFOCUS || note==EN_KILLFOCUS) { InvalidateRect(h,nullptr,FALSE); return 0; }
+        }
+        break;
+    case WM_KEYDOWN:
+        if (w==VK_ESCAPE && s) { s->result=1; s->done=true; DestroyWindow(h); return 0; }
+        break;
+    case WM_LBUTTONDOWN: {
+        const int x=GET_X_LPARAM(l), y=GET_Y_LPARAM(l);
+        if (y<kPsTitleH) {
+            if (x>=334) { if(s){s->result=1;s->done=true;} DestroyWindow(h); }
+            else { ReleaseCapture(); SendMessageW(h,WM_NCLBUTTONDOWN,HTCAPTION,0); }
+            return 0;
+        }
+        break;
+    }
+    case WM_CLOSE:
+        if (s) { s->result=1; s->done=true; }
+        DestroyWindow(h); return 0;
+    }
+    return DefWindowProcW(h,m,w,l);
+}
+
 bool EnsureClass(const wchar_t* name, WNDPROC proc){WNDCLASSEXW wc{};wc.cbSize=sizeof(wc);if(GetClassInfoExW(GetModuleHandleW(nullptr),name,&wc))return true;wc.lpfnWndProc=proc;wc.hInstance=GetModuleHandleW(nullptr);wc.hCursor=LoadCursor(nullptr,IDC_ARROW);wc.style=CS_DROPSHADOW;wc.lpszClassName=name;return RegisterClassExW(&wc)!=0;}
 
 template<typename State>
@@ -742,6 +887,33 @@ int ShowVectorSimpleColourHalftoneDialog(HWND parent, VectorSimpleColourHalftone
     int r=RunModal(parent,L"VectorSimpleColourHalftoneDialogV70",L"Simple Colour Halftone",476,748,s,SimpleProc);
     if(r==2) params=s.p;
     return r;
+}
+
+
+int ShowVectorPatternedHalftoneDialog(HWND parent, VectorPatternedHalftoneParams& params,
+                                      const PatternedHalftonePreviewCallback& previewCallback) {
+    TState s; s.p=params; s.cb=previewCallback; ConfigurePatternDisplayUnit(s);
+    INITCOMMONCONTROLSEX icc{sizeof(icc),ICC_STANDARD_CLASSES}; InitCommonControlsEx(&icc);
+    if(!EnsureClass(L"VectorPatternedHalftoneDialogV80",PatternedProc)) return 0;
+    HWND wnd=CreateWindowExW(WS_EX_CONTROLPARENT|WS_EX_TOOLWINDOW,
+        L"VectorPatternedHalftoneDialogV80",L"",
+        WS_POPUP,CW_USEDEFAULT,CW_USEDEFAULT,kPatternDialogW,kPatternDialogH,
+        parent,nullptr,GetModuleHandleW(nullptr),&s);
+    if(!wnd) return 0;
+    HRGN region=CreateRoundRectRgn(0,0,kPatternDialogW+1,kPatternDialogH+1,11,11);
+    SetWindowRgn(wnd,region,TRUE);
+    Centre(wnd,parent);
+    if(parent&&IsWindow(parent)) EnableWindow(parent,FALSE);
+    ShowWindow(wnd,SW_SHOW); UpdateWindow(wnd);
+    MSG msg{};
+    while(!s.done&&GetMessageW(&msg,nullptr,0,0)>0){
+        if(msg.message==WM_KEYDOWN && msg.wParam==VK_RETURN){SendMessageW(wnd,WM_COMMAND,MAKEWPARAM(T_OK,BN_CLICKED),0);continue;}
+        if(msg.message==WM_KEYDOWN && msg.wParam==VK_ESCAPE){SendMessageW(wnd,WM_COMMAND,MAKEWPARAM(T_CANCEL,BN_CLICKED),0);continue;}
+        if(!IsDialogMessageW(wnd,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}
+    }
+    if(parent&&IsWindow(parent)){EnableWindow(parent,TRUE);SetForegroundWindow(parent);}
+    if(s.result==2) params=s.p;
+    return s.result;
 }
 
 int ShowVectorPhotoshopHalftoneDialog(HWND parent, VectorPhotoshopHalftoneParams& params,
