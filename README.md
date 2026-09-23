@@ -17,8 +17,9 @@ v0.8 starts with an alternating triangle pattern inspired by triangular tessella
 
 - darker source areas produce larger triangles;
 - lighter source areas produce smaller triangles;
-- alternate cells flip the triangle 180 degrees;
-- alternate rows are staggered to create a triangular lattice;
+- paired left/right triangles sit at the centroids of a true equilateral-triangle tiling;
+- alternate rows shift by one triangle-cell altitude;
+- automatic spacing retains narrow light seams at maximum size;
 - the whole lattice rotates with **Pattern Angle**;
 - output marks remain Illustrator vector paths.
 
@@ -29,9 +30,11 @@ The dialog intentionally mirrors the compact Color Halftone window:
 - **Max. Radius** — largest triangle circumradius.
 - **Pattern Angle** — rotates the grid/pattern.
 - **Min. Radius** — smallest generated triangle.
-- **Spacing** — centre-to-centre screen spacing. Enter **0** for automatic spacing derived from Max. Radius.
+- **Spacing** — triangle-cell altitude in document points. Enter **0** for automatic spacing (`Max. Radius × 1.5 / 0.94`), which keeps narrow gaps between the largest triangles.
 
 The radius fields follow the current Illustrator document ruler units.
+
+To reproduce a light-to-dark triangle fade, apply the effect to a rectangle with a vertical white-to-black gradient. Start with **Pattern Angle = 0**, **Min. Radius = 0**, and **Spacing = 0**. Max. Radius controls the overall pattern scale. A flat fill produces uniformly sized triangles; the source gradient supplies the fade. Existing Patterned Halftone instances adopt the corrected lattice when rebuilt; legacy Simple Colour Halftone is unchanged.
 
 ### Output
 
