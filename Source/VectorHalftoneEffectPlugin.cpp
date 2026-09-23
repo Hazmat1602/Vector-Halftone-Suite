@@ -1558,10 +1558,16 @@ ASErr VectorHalftoneEffectPlugin::BuildSimpleColourHalftone(AIArtHandle inputArt
             const int colEnd = static_cast<int>(std::ceil(static_cast<double>(lb.maxX / spacing))) + 2;
 
             for (int row = rowStart; row <= rowEnd; ++row) {
-                const AIReal ly = static_cast<AIReal>(row) * spacing;
-                const AIReal stagger = (p.stagger && (row & 1)) ? spacing / 2 : 0;
+                const AIReal ly = static_cast<AIReal>(row) * rowSpacing;
+                const AIReal stagger = triangleLattice
+                    ? ((row & 1) ? spacing : 0)
+                    : ((p.stagger && (row & 1)) ? spacing / 2 : 0);
                 for (int col = colStart; col <= colEnd; ++col) {
-                    const AIReal lx = static_cast<AIReal>(col) * spacing + stagger;
+                    // Paired right/left centroids have alternating 4/3 and 2/3
+                    // altitude separations. Shift alternate rows by one altitude.
+                    const AIReal centroidOffset = triangleLattice
+                        ? ((col & 1) ? spacing / 6 : -spacing / 6) : 0;
+                    const AIReal lx = static_cast<AIReal>(col) * spacing + stagger + centroidOffset;
                     const AIReal px = patternCx + lx * cosA - ly * sinA;
                     const AIReal py = patternCy + lx * sinA + ly * cosA;
                     if (!VHPointInside(px, py, g)) continue;
@@ -1606,6 +1612,11 @@ ASErr VectorHalftoneEffectPlugin::BuildSimpleColourHalftone(AIArtHandle inputArt
         if (error != kNoErr) return error;
 
         const AIReal spacing = static_cast<AIReal>(p.spacing);
+        const bool triangleLattice = p.sourceMode == 1 && p.alternateTriangles && p.shape == 3;
+        // Equilateral triangle centroids do not form a staggered square grid.
+        // Spacing is the triangle-cell altitude; rows are half a side apart.
+        const AIReal rowSpacing = triangleLattice
+            ? spacing / static_cast<AIReal>(std::sqrt(3.0)) : spacing;
         const AIReal gridRad = static_cast<AIReal>(p.gridAngle * M_PI / 180.0);
         const AIReal gridCos = static_cast<AIReal>(std::cos(static_cast<double>(gridRad)));
         const AIReal gridSin = static_cast<AIReal>(std::sin(static_cast<double>(gridRad)));
@@ -1617,8 +1628,8 @@ ASErr VectorHalftoneEffectPlugin::BuildSimpleColourHalftone(AIArtHandle inputArt
             inputBounds.right + static_cast<AIReal>(p.maxSize),
             inputBounds.bottom - static_cast<AIReal>(p.maxSize),
             cx, cy, gridCos, gridSin);
-        const int rowStart = static_cast<int>(std::floor(static_cast<double>(lb.minY / spacing))) - 1;
-        const int rowEnd = static_cast<int>(std::ceil(static_cast<double>(lb.maxY / spacing))) + 1;
+        const int rowStart = static_cast<int>(std::floor(static_cast<double>(lb.minY / rowSpacing))) - 1;
+        const int rowEnd = static_cast<int>(std::ceil(static_cast<double>(lb.maxY / rowSpacing))) + 1;
         const int colStart = static_cast<int>(std::floor(static_cast<double>(lb.minX / spacing))) - 1;
         const int colEnd = static_cast<int>(std::ceil(static_cast<double>(lb.maxX / spacing))) + 1;
 
@@ -1814,11 +1825,10 @@ ASErr VectorHalftoneEffectPlugin::BuildSimpleColourHalftone(AIArtHandle inputArt
                         (p.maxSize - p.minSize) * shapeT);
                     if (size < static_cast<AIReal>(p.cullSize) || size <= static_cast<AIReal>(0.01)) continue;
                     AIReal markAngle = static_cast<AIReal>(p.gridAngle);
-                    if (p.alternateTriangles && p.shape == 3) {
-                        // Alternating 180-degree flips create the left/right tessellated
-                        // triangle rhythm used by Patterned Halftone. +90 degrees makes
-                        // an unrotated pattern point horizontally like the reference.
-                        markAngle += static_cast<AIReal>(90.0 + (((row + col) & 1) ? 180.0 : 0.0));
+                    if (triangleLattice) {
+                        // VHCreateMark's triangle starts pointing up. Even columns
+                        // point right, odd columns left; row shifts preserve tiling.
+                        markAngle += static_cast<AIReal>((col & 1) ? 90.0 : -90.0);
                     }
                     error = VHCreateMark(markGroup, p.shape, px, py, size, spacing,
                         markAngle, markStyle, !p.connectStroke,
@@ -2080,7 +2090,9 @@ ASErr VectorHalftoneEffectPlugin::BuildPatternedHalftone(AIArtHandle inputArt, A
     direct.mode = 2;
     direct.sourceMode = 1;
     direct.shape = 3; // triangle
-    direct.spacing = p.spacing > 0.0 ? p.spacing : p.maxRadius * std::sqrt(2.0);
+    // A triangle's altitude is 1.5 times its circumradius. Leave a 6%
+    // linear inset at full tone so the reference's light seams stay visible.
+    direct.spacing = p.spacing > 0.0 ? p.spacing : p.maxRadius * 1.5 / 0.94;
     direct.gridAngle = p.patternAngle;
     direct.minSize = p.minRadius * 2.0;
     direct.maxSize = p.maxRadius * 2.0;
