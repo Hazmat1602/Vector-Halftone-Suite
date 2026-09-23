@@ -78,7 +78,7 @@ struct VectorPatternedHalftoneParams {
     double maxRadius = 12.0;          // maximum triangle circumradius, document points
     double patternAngle = 0.0;        // rotates the lattice and triangle pattern
     double minRadius = 0.0;           // minimum triangle circumradius, document points
-    double spacing = 0.0;             // 0 = auto (maxRadius * sqrt(2))
+    double spacing = 0.0;            // triangle-cell altitude; 0 = maxRadius * 1.5 / 0.94
     int preserveSourceAppearance = 0;
 };
 
