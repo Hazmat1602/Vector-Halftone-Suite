@@ -1,6 +1,7 @@
 param(
     [ValidateSet('Debug','Release')]
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+    [string]$MSBuildPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,104 +20,88 @@ Expected layout:
 "@
 }
 
-$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-if (!(Test-Path $vswhere)) {
-    throw @"
-Visual Studio / Build Tools was not found.
-Install Visual Studio 2022 or 2026 with:
-  - Desktop development with C++
-  - MSVC v143 - VS 2022 C++ x64/x86 build tools
-  - A Windows 10/11 SDK
-"@
-}
-
-# Do not simply pick the newest MSBuild installation. A machine can have a newer
-# Visual Studio instance with only .NET tooling installed, while an older
-# instance contains the C++ targets we actually need. That produces MSB4019 for
-# Microsoft.Cpp.Default.props before the project can even be evaluated.
-$instances = @(& $vswhere -all -products * -format json | ConvertFrom-Json)
-if ($instances.Count -eq 0) {
-    throw 'No Visual Studio installations were found by vswhere.'
-}
-
-$cppCapable = @()
-$v143Capable = @()
-
-foreach ($instance in $instances) {
-    $installPath = [string]$instance.installationPath
-    if ([string]::IsNullOrWhiteSpace($installPath)) { continue }
-
-    $msbuild = Join-Path $installPath 'MSBuild\Current\Bin\MSBuild.exe'
-    $vcRoot = Join-Path $installPath 'MSBuild\Microsoft\VC'
-
-    if (!(Test-Path $msbuild) -or !(Test-Path $vcRoot)) { continue }
-
-    $cppProps = Get-ChildItem -Path $vcRoot -Recurse -Filter 'Microsoft.Cpp.Default.props' -File -ErrorAction SilentlyContinue |
+# Use the caller's selected build environment before automatic discovery.
+$msbuild = $null
+if ($MSBuildPath) {
+    $msbuild = (Resolve-Path -LiteralPath $MSBuildPath).Path
+    if (!(Test-Path -LiteralPath $msbuild -PathType Leaf)) {
+        throw "MSBuildPath must point to MSBuild.exe: $MSBuildPath"
+    }
+} else {
+    $onPath = Get-Command MSBuild.exe -CommandType Application -ErrorAction SilentlyContinue |
         Select-Object -First 1
+    if ($onPath) { $msbuild = $onPath.Source }
 
-    if (!$cppProps) { continue }
-
-    $cppCapable += [pscustomobject]@{
-        Instance = $instance
-        MSBuild = $msbuild
-        VCRoot = $vcRoot
+    if (!$msbuild) {
+        $installerRoot = [Environment]::GetFolderPath('ProgramFilesX86')
+        $vswhere = Join-Path $installerRoot 'Microsoft Visual Studio\Installer\vswhere.exe'
+        if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+            # Prefer C++ installations, but never block a build based on
+            # installer metadata or a particular Toolset.props folder layout.
+            $queries = @(
+                @('-requires', 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64'),
+                @('-requires', 'Microsoft.Component.MSBuild')
+            )
+            foreach ($query in $queries) {
+                $found = @(& $vswhere -latest -prerelease -products '*' @query -find 'MSBuild\**\Bin\MSBuild.exe')
+                if ($LASTEXITCODE -ne 0) { continue }
+                $msbuild = $found | Where-Object {
+                    $_ -and (Test-Path -LiteralPath $_ -PathType Leaf)
+                } | Select-Object -First 1
+                if ($msbuild) { break }
+            }
+        }
     }
 
-    $v143Props = Get-ChildItem -Path $vcRoot -Recurse -Filter 'Toolset.props' -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match '[\\/]PlatformToolsets[\\/]v143[\\/]' } |
-        Select-Object -First 1
-
-    if ($v143Props) {
-        $v143Capable += [pscustomobject]@{
-            Instance = $instance
-            MSBuild = $msbuild
-            VCRoot = $vcRoot
-            V143 = $v143Props.FullName
+    # Fallback when vswhere is unavailable or its metadata is incomplete.
+    if (!$msbuild) {
+        $roots = @($env:ProgramFiles, [Environment]::GetFolderPath('ProgramFilesX86')) |
+            Where-Object { $_ } | Select-Object -Unique
+        foreach ($root in $roots) {
+            $pattern = Join-Path $root 'Microsoft Visual Studio\*\*\MSBuild\Current\Bin\MSBuild.exe'
+            $candidate = Get-ChildItem -Path $pattern -File -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if ($candidate) { $msbuild = $candidate.FullName; break }
         }
     }
 }
 
-if ($cppCapable.Count -eq 0) {
+if (!$msbuild) {
     throw @"
-Visual Studio is installed, but no installation contains the Visual C++ MSBuild targets.
-
-Open Visual Studio Installer -> Modify and install:
-  Workload:
-    Desktop development with C++
-
-Then make sure a Windows 10 or Windows 11 SDK is selected.
+MSBuild.exe could not be located. Run from Developer PowerShell,
+or supply its location:
+  .\build.ps1 -MSBuildPath 'C:\path\to\MSBuild.exe'
 "@
 }
 
-if ($v143Capable.Count -eq 0) {
-    $found = ($cppCapable | ForEach-Object { $_.Instance.displayName }) -join ', '
-    throw @"
-C++ tooling was found ($found), but the v143 platform toolset required by the Illustrator project is missing.
-
-Open Visual Studio Installer -> Modify -> Individual components and install:
-  MSVC v143 - VS 2022 C++ x64/x86 build tools
-
-If you are using Visual Studio 2026, v143 is an optional compatibility toolset and
-must be selected separately from the latest C++ tools.
-"@
-}
-
-$selected = $v143Capable |
-    Sort-Object { [version]$_.Instance.installationVersion } -Descending |
-    Select-Object -First 1
-
-$msbuild = $selected.MSBuild
-Write-Host ("Using {0} ({1})" -f $selected.Instance.displayName, $selected.Instance.installationVersion) -ForegroundColor Cyan
-Write-Host ("MSBuild: {0}" -f $msbuild)
+Write-Host ("MSBuild: {0}" -f $msbuild) -ForegroundColor Cyan
+$logPath = Join-Path $projectRoot 'build-log.txt'
+$pluginPath = [IO.Path]::GetFullPath(
+    (Join-Path $projectRoot "..\output\win\x64\$Configuration\VectorHalftoneEffect.aip"))
+Write-Host ("Build log: {0}" -f $logPath)
+Write-Host ("Expected plug-in: {0}" -f $pluginPath)
 
 Push-Location $projectRoot
 try {
-    & $msbuild '.\VectorHalftoneEffect.sln' /t:Rebuild /m /p:Configuration=$Configuration /p:Platform=x64
-    if ($LASTEXITCODE -ne 0) { throw "Build failed with exit code $LASTEXITCODE" }
-
-    $plugin = Resolve-Path "..\output\win\x64\$Configuration\VectorHalftoneEffect.aip"
-    Write-Host "`nBuilt successfully:" -ForegroundColor Green
-    Write-Host $plugin
+    $buildArguments = @(
+        '.\VectorHalftoneEffect.sln',
+        '/t:Rebuild',
+        '/m',
+        "/p:Configuration=$Configuration",
+        '/p:Platform=x64',
+        '/fl',
+        "/flp:LogFile=$logPath;Verbosity=normal;Encoding=UTF-8"
+    )
+    & $msbuild @buildArguments
+    $buildExitCode = $LASTEXITCODE
+    if ($buildExitCode -ne 0) {
+        throw "Build failed with exit code $buildExitCode. See MSBuild's error above or $logPath"
+    }
+    if (!(Test-Path -LiteralPath $pluginPath -PathType Leaf)) {
+        throw "MSBuild succeeded but the expected plug-in was not found: $pluginPath"
+    }
+    Write-Host 'Built successfully:' -ForegroundColor Green
+    Write-Host $pluginPath
 } finally {
     Pop-Location
 }
