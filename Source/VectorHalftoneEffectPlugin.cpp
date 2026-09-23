@@ -1558,16 +1558,10 @@ ASErr VectorHalftoneEffectPlugin::BuildSimpleColourHalftone(AIArtHandle inputArt
             const int colEnd = static_cast<int>(std::ceil(static_cast<double>(lb.maxX / spacing))) + 2;
 
             for (int row = rowStart; row <= rowEnd; ++row) {
-                const AIReal ly = static_cast<AIReal>(row) * rowSpacing;
-                const AIReal stagger = triangleLattice
-                    ? ((row & 1) ? spacing : 0)
-                    : ((p.stagger && (row & 1)) ? spacing / 2 : 0);
+                const AIReal ly = static_cast<AIReal>(row) * spacing;
+                const AIReal stagger = (p.stagger && (row & 1)) ? spacing / 2 : 0;
                 for (int col = colStart; col <= colEnd; ++col) {
-                    // Paired right/left centroids have alternating 4/3 and 2/3
-                    // altitude separations. Shift alternate rows by one altitude.
-                    const AIReal centroidOffset = triangleLattice
-                        ? ((col & 1) ? spacing / 6 : -spacing / 6) : 0;
-                    const AIReal lx = static_cast<AIReal>(col) * spacing + stagger + centroidOffset;
+                    const AIReal lx = static_cast<AIReal>(col) * spacing + stagger;
                     const AIReal px = patternCx + lx * cosA - ly * sinA;
                     const AIReal py = patternCy + lx * sinA + ly * cosA;
                     if (!VHPointInside(px, py, g)) continue;
@@ -1810,10 +1804,16 @@ ASErr VectorHalftoneEffectPlugin::BuildSimpleColourHalftone(AIArtHandle inputArt
             }
 
             for (int row = rowStart; row <= rowEnd; ++row) {
-                const AIReal ly = static_cast<AIReal>(row) * spacing;
-                const AIReal stagger = (p.stagger && (row & 1)) ? spacing / 2 : 0;
+                const AIReal ly = static_cast<AIReal>(row) * rowSpacing;
+                const AIReal stagger = triangleLattice
+                    ? ((row & 1) ? spacing : 0)
+                    : ((p.stagger && (row & 1)) ? spacing / 2 : 0);
                 for (int col = colStart; col <= colEnd; ++col) {
-                    const AIReal lx = static_cast<AIReal>(col) * spacing + stagger;
+                    // Paired right/left centroids have alternating 4/3 and 2/3
+                    // altitude separations. Shift alternate rows by one altitude.
+                    const AIReal centroidOffset = triangleLattice
+                        ? ((col & 1) ? spacing / 6 : -spacing / 6) : 0;
+                    const AIReal lx = static_cast<AIReal>(col) * spacing + stagger + centroidOffset;
                     const AIReal px = cx + lx * gridCos - ly * gridSin;
                     const AIReal py = cy + lx * gridSin + ly * gridCos;
                     const double tone = sampledTone(px, py);
